@@ -345,7 +345,8 @@
           <div class="panel"><div class="players-toolbar"><div class="filters"><input class="control" id="playerSearch" type="search" placeholder="Search player or team…" aria-label="Search players"><select class="control" id="positionFilter" aria-label="Filter by position"><option value="all">All positions</option><option>PG</option><option>SG</option><option>SF</option><option>PF</option><option>C</option></select><select class="control" id="teamFilter" aria-label="Filter by team"><option value="all">All teams</option></select></div><select class="control" id="sortBy" aria-label="Sort players"><option value="rank">Sort: projected rank</option><option value="pts">Sort: points</option><option value="reb">Sort: rebounds</option><option value="ast">Sort: assists</option><option value="stl">Sort: steals</option><option value="blk">Sort: blocks</option><option value="three">Sort: 3-pointers</option><option value="fg">Sort: FG%</option><option value="ft">Sort: FT%</option><option value="games">Sort: games played</option><option value="usg">Sort: usage rate</option><option value="ts">Sort: true shooting</option></select></div>
             <div class="table-wrap"><table><thead><tr><th># / PLAYER</th><th>POS</th><th>TEAM</th><th>PTS<span class="metric-head">PROJ / 25–26 ACTUAL</span></th><th>REB<span class="metric-head">PROJ / 25–26 ACTUAL</span></th><th>AST<span class="metric-head">PROJ / 25–26 ACTUAL</span></th><th>STL<span class="metric-head">PROJ / 25–26 ACTUAL</span></th><th>BLK<span class="metric-head">PROJ / 25–26 ACTUAL</span></th><th>3PM<span class="metric-head">PROJ / 25–26 ACTUAL</span></th><th>FG%<span class="metric-head">PROJ / 25–26 ACTUAL</span></th><th>FT%<span class="metric-head">PROJ / 25–26 ACTUAL</span></th><th>TO<span class="metric-head">PROJ / 25–26 ACTUAL</span></th><th>GP<span class="metric-head">PROJ / 25–26 ACTUAL</span></th><th>USG%<span class="metric-head">PROJ / 25–26 ACTUAL</span></th><th>TS%<span class="metric-head">PROJ / 25–26 ACTUAL</span></th><th>PROJ</th><th></th></tr></thead><tbody id="playerRows"></tbody></table></div>
             <div class="stats-data-note" id="playerStatsStatus" aria-live="polite">Loading 2025–26 regular-season stats…</div>
-            <div class="table-caption">Each stat cell shows the projection first and the actual 2025–26 regular-season average beneath it. PTS, REB, AST, STL, BLK, 3PM, FG%, FT%, TO, USG%, and TS% are per game/rate stats; GP is a season total. The demo projections are estimates, not official ESPN projections. Actual player stats are retrieved from the <a href="https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2026/types/2/athletes" target="_blank" rel="noopener noreferrer">ESPN Core API ↗</a>.</div>
+            <div class="schedule-footer"><span id="playersPageInfo">Page 1</span><div class="schedule-tools"><button class="btn small" id="playersPrevious" aria-label="Previous players page">←</button><button class="btn small" id="playersNext" aria-label="Next players page">→</button></div></div>
+            <div class="table-caption">Each stat cell shows the projection first and the actual 2025–26 regular-season average beneath it. PTS, REB, AST, STL, BLK, 3PM, FG%, FT%, TO, USG%, and TS% are per game/rate stats; GP is a season total. The demo projections are estimates, not official ESPN projections. Players outside the curated demo list are ranked by actual 2025–26 production once loaded and show "—" for projections; they are not queueable in the Draft Room, which uses illustrative projections. Actual player stats are retrieved from the <a href="https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2026/types/2/athletes" target="_blank" rel="noopener noreferrer">ESPN Core API ↗</a>.</div>
           </div>
         </section>
 
@@ -521,6 +522,8 @@
     let advancedPage = 0;
     const advancedPageSize = 25;
     const advancedMinimumGames = 20;
+    let playersPage = 0;
+    const playersPageSize = 50;
     const statsCacheKey = "courtside-nba-season-stats-2026-v2";
     const advancedPlayerById = new Map();
     const advancedPercentileValues = new Map();
@@ -718,19 +721,53 @@
       scheduleUpdatedAt = null;
       loadSchedule();
     }
-    const projectedGames = player => includeInjuries ? player.games : Math.min(82, Math.round(player.games * 1.04));
+    // Prefers a player's own demo projection for a category (keeps curated players'
+    // rankings stable regardless of in-season swings); for the rest of the NBA player
+    // pool (no curated projection) this falls back to their loaded 2025–26 actual
+    // average, so every player becomes rankable once their real stats are in.
+    function effectiveValue(player, key) {
+      if (Number.isFinite(player[key])) return player[key];
+      const stats = historicalStats[playerStatsKey(player)];
+      return stats?.status === "loaded" && Number.isFinite(stats[key]) ? stats[key] : undefined;
+    }
+    const projectedGames = player => {
+      const games = effectiveValue(player, "games");
+      if (!Number.isFinite(games)) return undefined;
+      return includeInjuries ? games : Math.min(82, Math.round(games * 1.04));
+    };
     function pointsValue(player) {
-      return player.pts + player.three * .5 + player.reb * 1.25 + player.ast * 1.5 + player.stl * 2 + player.blk * 2 - player.to;
+      const pts=effectiveValue(player,"pts"), three=effectiveValue(player,"three"), reb=effectiveValue(player,"reb"),
+        ast=effectiveValue(player,"ast"), stl=effectiveValue(player,"stl"), blk=effectiveValue(player,"blk"), to=effectiveValue(player,"to");
+      if (![pts,three,reb,ast,stl,blk,to].every(Number.isFinite)) return -Infinity;
+      return pts + three * .5 + reb * 1.25 + ast * 1.5 + stl * 2 + blk * 2 - to;
     }
     function playerValue(player, scoring = format) {
       if (scoring === "points") return pointsValue(player);
+      const pts=effectiveValue(player,"pts"), reb=effectiveValue(player,"reb"), ast=effectiveValue(player,"ast"),
+        stl=effectiveValue(player,"stl"), blk=effectiveValue(player,"blk"), three=effectiveValue(player,"three"),
+        fg=effectiveValue(player,"fg"), ft=effectiveValue(player,"ft"), to=effectiveValue(player,"to");
+      if (![pts,reb,ast,stl,blk,three,fg,ft,to].every(Number.isFinite)) return -Infinity;
       const safeGames = Math.max(1, projectedGames(player));
       const seasonRate = safeGames / 72;
-      const rateValue = (player.fg - .46) * (player.pts + 2) * 2.7 + (player.ft - .78) * (player.pts * .44) * 2.3;
-      return player.pts*.12 + player.reb*.48 + player.ast*.54 + player.stl*1.5 + player.blk*1.45 + player.three*.55 - player.to*.43 + rateValue*.2 + seasonRate*1.4;
+      const rateValue = (fg - .46) * (pts + 2) * 2.7 + (ft - .78) * (pts * .44) * 2.3;
+      return pts*.12 + reb*.48 + ast*.54 + stl*1.5 + blk*1.45 + three*.55 - to*.43 + rateValue*.2 + seasonRate*1.4;
+    }
+    // Draft Room and Trade Desk key players off the curated demo array's own object
+    // identity/name (e.g. addToDraft looks players up by name), so they keep using this
+    // narrower, original-behavior ranking rather than the full ESPN-merged pool below —
+    // advancedPlayers' merged objects use ESPN's display name (which can differ from the
+    // curated name, e.g. accented characters), which would break those name-based lookups.
+    function curatedRankedPlayers(scoring = format) {
+      return [...players].sort((a,b) => playerValue(b,scoring)-playerValue(a,scoring));
     }
     function rankedPlayers(scoring = format) {
-      return [...players].sort((a,b) => playerValue(b,scoring)-playerValue(a,scoring));
+      // advancedPlayers starts as the curated demo list and expands to the full ESPN
+      // NBA player directory once loadHistoricalStats() resolves, so every player
+      // becomes part of the ranked pool automatically as real stats come in.
+      const scored = advancedPlayers.map(player => ({player, value: playerValue(player,scoring)}));
+      const ranked = scored.filter(entry => Number.isFinite(entry.value)).sort((a,b)=>b.value-a.value).map(entry=>entry.player);
+      const unranked = scored.filter(entry => !Number.isFinite(entry.value)).map(entry=>entry.player).sort((a,b)=>a.name.localeCompare(b.name));
+      return [...ranked, ...unranked];
     }
     function percent(value) { return `${(value*100).toFixed(1)}%`; }
     function playerStatsKey(player) {
@@ -886,12 +923,13 @@
       return `<div class="stat-pair"><span class="stat-projection">${projectionText}</span><span class="stat-actual" title="${title}">${actual}</span></div>`;
     }
     function renderHistoricalStatus() {
-      const loaded=players.filter(player=>historicalStats[playerStatsKey(player)]?.status==="loaded").length;
-      const failed=players.filter(player=>historicalStats[playerStatsKey(player)]?.status==="error").length;
-      const notAvailable=players.length-loaded-failed;
+      const total=advancedPlayers.length;
+      const loaded=advancedPlayers.filter(player=>historicalStats[playerStatsKey(player)]?.status==="loaded").length;
+      const failed=advancedPlayers.filter(player=>historicalStats[playerStatsKey(player)]?.status==="error").length;
+      const notAvailable=total-loaded-failed;
       const status=historicalStatsLoading
-        ? `Loading 2025–26 stats from ESPN… ${loaded} of ${players.length} projected players loaded.`
-        : `2025–26 regular-season stats loaded for ${loaded} of ${players.length} players${notAvailable?`; ${notAvailable} unavailable or no 2025–26 stats`:""}${failed?`; ${failed} ESPN request${failed===1?"":"s"} failed`:""}.`;
+        ? `Loading 2025–26 stats from ESPN… ${loaded} of ${total} NBA players loaded so far.`
+        : `${total} NBA players in the pool · 2025–26 regular-season stats loaded for ${loaded}${notAvailable?`; ${notAvailable} unavailable or no 2025–26 stats`:""}${failed?`; ${failed} ESPN request${failed===1?"":"s"} failed`:""}.`;
       $("#playerStatsStatus").textContent=status;
     }
     function normalizeSeasonStats(data) {
@@ -1102,6 +1140,7 @@
           const id=espnAthleteIds[player.name];
           if(!id||!historicalStats[id]) historicalStats[player.name]={status:"missing"};
         }
+        populateSelectors();
         renderHistoricalStatus();
         renderPlayers();
         renderTopPlayers();
@@ -1111,7 +1150,9 @@
       } catch(error) {
         historicalStatsLoading=false;
         advancedProgress.error=error instanceof Error?`Could not load the full NBA player directory: ${error.message}`:"Could not load the full NBA player directory.";
+        populateSelectors();
         renderHistoricalStatus();
+        renderPlayers();
         renderRoster();
         renderAdvancedProgress();
         renderAdvanced();
@@ -1269,14 +1310,37 @@
       const team = $("#teamFilter").value;
       const sort = $("#sortBy").value;
       let filtered = rankedPlayers().filter(p => (!query || `${p.name} ${p.team}`.toLowerCase().includes(query)) && (position === "all" || p.pos.split("/").includes(position)) && (team === "all" || p.team === team));
-      if (sort !== "rank") filtered.sort((a,b) => sort === "games" ? projectedGames(b)-projectedGames(a) : sort === "usg" ? b.usg-a.usg : sort === "ts" ? b.ts-a.ts : b[sort]-a[sort]);
+      if (sort !== "rank") {
+        // Sort on whichever value is actually shown (projection, or loaded actual when no
+        // projection exists); players with no data at all for the chosen stat sink to the bottom.
+        const sortValue = sort === "games" ? projectedGames : p => effectiveValue(p, sort);
+        filtered.sort((a,b) => {
+          const av = sortValue(a), bv = sortValue(b);
+          if (!Number.isFinite(av) && !Number.isFinite(bv)) return a.name.localeCompare(b.name);
+          if (!Number.isFinite(av)) return 1;
+          if (!Number.isFinite(bv)) return -1;
+          return bv - av;
+        });
+      }
+      const total = filtered.length;
+      const pageCount = Math.max(1, Math.ceil(total / playersPageSize));
+      playersPage = Math.min(playersPage, pageCount - 1);
+      const start = playersPage * playersPageSize;
+      const page = filtered.slice(start, start + playersPageSize);
       const fmt=value=>Number.isFinite(value)?percent(value):"—";
-      $("#playerRows").innerHTML = filtered.map((p,i)=>`<tr><td>${playerCell(p,i+1)}</td><td>${p.pos}</td><td>${p.team}</td><td>${statPair(p,"pts")}</td><td>${statPair(p,"reb")}</td><td>${statPair(p,"ast")}</td><td>${statPair(p,"stl")}</td><td>${statPair(p,"blk")}</td><td>${statPair(p,"three")}</td><td>${statPair(p,"fg",fmt)}</td><td>${statPair(p,"ft",fmt)}</td><td>${statPair(p,"to")}</td><td>${statPair(p,"games",value=>String(value),projectedGames(p))}</td><td>${statPair(p,"usg",value=>`${Number(value).toFixed(1)}%`,p.usg)}</td><td>${statPair(p,"ts",fmt)}</td><td class="rank">${Math.round(playerValue(p))}</td><td><button class="btn small" data-queue="${p.name}">＋ Queue</button></td></tr>`).join("") || `<tr><td colspan="17" class="empty">No players match your filters.</td></tr>`;
+      $("#playerRows").innerHTML = page.map((p,i)=>{ const queueName=curatedQueueName(p); return `<tr><td>${playerCell(p,start+i+1)}</td><td>${p.pos}</td><td>${p.team}</td><td>${statPair(p,"pts")}</td><td>${statPair(p,"reb")}</td><td>${statPair(p,"ast")}</td><td>${statPair(p,"stl")}</td><td>${statPair(p,"blk")}</td><td>${statPair(p,"three")}</td><td>${statPair(p,"fg",fmt)}</td><td>${statPair(p,"ft",fmt)}</td><td>${statPair(p,"to")}</td><td>${statPair(p,"games",value=>String(value),projectedGames(p))}</td><td>${statPair(p,"usg",value=>`${Number(value).toFixed(1)}%`,p.usg)}</td><td>${statPair(p,"ts",fmt)}</td><td class="rank">${Number.isFinite(playerValue(p))?Math.round(playerValue(p)):"—"}</td><td>${queueName?`<button class="btn small" data-queue="${escapeHTML(queueName)}">＋ Queue</button>`:""}</td></tr>`; }).join("") || `<tr><td colspan="17" class="empty">No players match your filters.</td></tr>`;
+      $("#playersPageInfo").textContent = `Page ${playersPage+1} of ${pageCount} · ${total} players`;
+      $("#playersPrevious").disabled = playersPage===0;
+      $("#playersNext").disabled = playersPage>=pageCount-1;
     }
     function populateSelectors() {
-      const teams = [...new Set(players.map(p=>p.team))].sort();
-      $("#teamFilter").innerHTML += teams.map(team=>`<option>${team}</option>`).join("");
-      const options = rankedPlayers().map(p=>`<option value="${p.name}">${p.name} · ${p.pos} · #${p.adp}</option>`).join("");
+      const previousTeam = $("#teamFilter").value;
+      const teams = [...new Set(advancedPlayers.map(p=>p.team))].sort();
+      $("#teamFilter").innerHTML = `<option value="all">All teams</option>${teams.map(team=>`<option>${team}</option>`).join("")}`;
+      if (teams.includes(previousTeam)) $("#teamFilter").value = previousTeam;
+      // Trade Desk only models curated demo projections, so its player selects stay
+      // scoped to the curated list (consistent with the value-impact math below).
+      const options = curatedRankedPlayers().map(p=>`<option value="${p.name}">${p.name} · ${p.pos} · #${p.adp}</option>`).join("");
       $("#receiveSelect").innerHTML = `<option value="">Choose a player…</option>${options}`;
       $("#giveSelect").innerHTML = `<option value="">Choose a player…</option>${options}`;
     }
@@ -1326,7 +1390,8 @@
       const totals = categories.map(cat => draft.reduce((sum,p)=>sum+p[cat],0));
       const max = Math.max(1,...totals);
       $("#rosterCategories").innerHTML = categories.map((cat,i)=>`<div class="category-row"><div class="category-name">${categoryLabels[cat]}</div><div class="category-bar"><div class="category-fill" style="width:${totals[i]/max*100}%"></div></div><div class="category-value">${cat==="fg"||cat==="ft"?percent(totals[i]/Math.max(1,draft.length)):totals[i].toFixed(1)}</div></div>`).join("");
-      $("#availablePlayers").innerHTML = rankedPlayers().filter(p=>!draft.includes(p)).slice(0,5).map(p=>`<div class="insight" style="align-items:center"><div class="player-avatar">${initials(p.name)}</div><div style="flex:1"><div class="insight-title">${p.name}</div><div class="insight-text">${p.pos} · ${p.team} · proj. ${Math.round(playerValue(p))}</div></div><button class="btn small" data-queue="${p.name}">＋</button></div>`).join("");
+      // Draft Room works off illustrative demo projections, so only curated players are offered here.
+      $("#availablePlayers").innerHTML = curatedRankedPlayers().filter(p=>!draft.includes(p)).slice(0,5).map(p=>`<div class="insight" style="align-items:center"><div class="player-avatar">${initials(p.name)}</div><div style="flex:1"><div class="insight-title">${p.name}</div><div class="insight-text">${p.pos} · ${p.team} · proj. ${Math.round(playerValue(p))}</div></div><button class="btn small" data-queue="${p.name}">＋</button></div>`).join("");
     }
     function mockFillerPlayer(index) {
       const decay = Math.max(.2,1-index*.012);
@@ -1526,6 +1591,15 @@
       const toast=$("#toast"); toast.textContent=message; toast.classList.add("show");
       clearTimeout(notify.timer); notify.timer=setTimeout(()=>toast.classList.remove("show"),2200);
     }
+    // The Player Pool table's rows come from advancedPlayers, whose merged curated entries
+    // use ESPN's display name (which can include accents/diacritics that differ from the
+    // curated demo array's plain name, e.g. "Jokić" vs "Jokic"). addToDraft looks players up
+    // by their curated name, so the Queue button must use that exact curated name.
+    function curatedQueueName(p) {
+      if (!Number.isFinite(p.pts)) return null;
+      const curated = p.espnId ? players.find(cp => espnAthleteIds[cp.name] === p.espnId) : null;
+      return curated ? curated.name : p.name;
+    }
     function addToDraft(name) {
       const player=players.find(p=>p.name===name);
       if (!player || draft.includes(player)) return;
@@ -1534,10 +1608,12 @@
     }
     $$(".nav button").forEach(button=>button.addEventListener("click",()=>navigate(button.dataset.page)));
     $$("[data-goto]").forEach(button=>button.addEventListener("click",()=>navigate(button.dataset.goto)));
-    ["playerSearch","positionFilter","teamFilter","sortBy"].forEach(id=>$("#"+id).addEventListener(id==="playerSearch"?"input":"change",renderPlayers));
+    ["playerSearch","positionFilter","teamFilter","sortBy"].forEach(id=>$("#"+id).addEventListener(id==="playerSearch"?"input":"change",()=>{ playersPage=0; renderPlayers(); }));
+    $("#playersPrevious").addEventListener("click",()=>{ playersPage=Math.max(0,playersPage-1); renderPlayers(); });
+    $("#playersNext").addEventListener("click",()=>{ playersPage++; renderPlayers(); });
     $$(".tabs [data-format]").forEach(button=>button.addEventListener("click",()=>{
       format=button.dataset.format; $$(".tabs [data-format]").forEach(item=>item.classList.toggle("active",item===button));
-      renderPlayers(); renderTopPlayers(); populateSelectors();
+      playersPage=0; renderPlayers(); renderTopPlayers(); populateSelectors();
     }));
     $$(".tabs [data-trade-format]").forEach(button=>button.addEventListener("click",()=>{
       tradeFormat=button.dataset.tradeFormat; $$(".tabs [data-trade-format]").forEach(item=>item.classList.toggle("active",item===button)); renderTrade();
@@ -1572,7 +1648,7 @@
       if(boxScoreRetry) loadBoxScore(boxScoreRetry.dataset.retryBoxScore);
     });
     $("#draftNext").addEventListener("click",()=>{
-      const next=rankedPlayers().find(p=>!draft.includes(p));
+      const next=curatedRankedPlayers().find(p=>!draft.includes(p));
       if(next) addToDraft(next.name);
     });
     $("#mockStartBtn").addEventListener("click",startMockDraft);
