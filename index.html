@@ -220,6 +220,25 @@
     @media (max-width: 520px) { .schedule-games, .schedule-preview .schedule-games { grid-template-columns: 1fr; } .schedule-tools input[type="date"] { width: 125px; } }
     .toast { position: fixed; right: 22px; bottom: 22px; z-index: 10; padding: 12px 16px; border: 1px solid #435233; border-radius: 8px; background: #20291d; color: #e4f3c9; font-size: 11px; opacity: 0; pointer-events: none; transform: translateY(8px); transition: .2s; }
     .toast.show { opacity: 1; transform: translateY(0); }
+    .mock-board { width: 100%; border-collapse: collapse; font-size: 10px; }
+    .mock-board th, .mock-board td { padding: 8px 9px; border: 1px solid var(--line); text-align: left; white-space: nowrap; }
+    .mock-board thead th { position: sticky; top: 0; background: var(--panel-2); color: #c9cdd6; font-size: 9px; letter-spacing: .04em; text-transform: uppercase; }
+    .mock-board .mock-round-label { color: var(--muted); font-family: "DM Mono", monospace; font-size: 9px; background: #171b23; }
+    .mock-board td.mock-cell { min-width: 112px; color: #c8cdd5; }
+    .mock-pick-num { display: block; color: var(--muted); font-family: "DM Mono", monospace; font-size: 8px; }
+    .mock-pick-name { display: block; margin-top: 2px; font-weight: 600; color: var(--text); }
+    .mock-cell.empty .mock-pick-name { color: #565c68; font-weight: 400; }
+    .mock-cell.onclock { outline: 2px solid var(--accent); outline-offset: -2px; background: #2b2416; }
+    .mock-board th.user-col, .mock-board td.user-col { background: #241d15; }
+    .mock-board thead th.user-col { background: #3a2a19; color: var(--accent); }
+    .mock-available-row { display: flex; align-items: center; gap: 11px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+    .mock-available-row:last-child { border-bottom: 0; }
+    .mock-pick-row { display: flex; align-items: center; gap: 11px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+    .mock-pick-row:last-child { border-bottom: 0; }
+    .mock-pick-round { width: 26px; color: var(--muted); font-family: "DM Mono", monospace; font-size: 10px; }
+    .mock-grade { display: flex; align-items: center; gap: 18px; }
+    .mock-grade-badge { display: grid; flex: 0 0 62px; width: 62px; height: 62px; place-items: center; border-radius: 14px; background: linear-gradient(145deg, #ffc06b, #ff7834); color: #21150f; font-family: "Space Grotesk", sans-serif; font-size: 22px; font-weight: 800; }
+    .mock-fast-forward { display: flex; align-items: center; gap: 8px; margin-top: 10px; color: var(--muted); font-size: 10px; }
     .mobile-menu { display: none; }
     @media (max-width: 1050px) {
       .sidebar { width: 205px; } .main { margin-left: 205px; }
@@ -260,6 +279,7 @@
         <button data-page="roster"><span class="nav-icon">▣</span><span class="nav-text">My roster</span></button>
         <button data-page="advanced"><span class="nav-icon">▤</span><span class="nav-text">Advanced metrics</span></button>
         <button data-page="draft"><span class="nav-icon">⌖</span><span class="nav-text">Draft room</span></button>
+        <button data-page="mockdraft"><span class="nav-icon">⛃</span><span class="nav-text">Mock draft</span></button>
         <button data-page="trade"><span class="nav-icon">⇄</span><span class="nav-text">Trade analyzer</span></button>
         <button data-page="settings"><span class="nav-icon">⚙</span><span class="nav-text">League settings</span></button>
       </nav>
@@ -343,6 +363,31 @@
           <div class="draft-layout"><div class="panel"><div class="panel-head"><div><div class="panel-title">My draft board</div><div class="panel-note">12 rounds · Snake format · Click a suggestion to add it to your queue</div></div><span class="tag green" id="draftProgress">0 / 12 picks</span></div><div class="progress-track"><div class="progress-fill" id="draftProgressBar" style="width:0%"></div></div><div id="draftPicks"></div></div>
             <div><div class="panel"><div class="panel-head"><div><div class="panel-title">Roster build</div><div class="panel-note">Category profile · from players drafted</div></div></div><div id="rosterCategories"></div></div><div class="panel section-gap"><div class="panel-head"><div><div class="panel-title">Best available</div><div class="panel-note">Highest-ranked players not yet queued</div></div></div><div id="availablePlayers"></div></div></div>
           </div>
+        </section>
+
+        <section class="page" id="page-mockdraft">
+          <div class="page-heading"><div><div class="eyebrow" id="mockEyebrow">MOCK DRAFT · SLOT 4 OF 12</div><h1>Run a live mock draft.</h1><p class="subtitle">Pick any draft slot, simulate the other 11 teams pick-by-pick, and see how your team grades out when it's done.</p></div><div class="filters"><label class="setting" for="mockSlotPicker" style="gap:4px"><small style="color:var(--muted)">DRAFT SLOT</small><select class="control" id="mockSlotPicker" aria-label="Your mock draft slot"></select></label><label class="setting" for="mockTeamCountPicker" style="gap:4px"><small style="color:var(--muted)">TEAMS</small><select class="control" id="mockTeamCountPicker" aria-label="Number of mock draft teams"><option>8</option><option>10</option><option selected>12</option><option>14</option><option>16</option></select></label><label class="setting" for="mockRoundsPicker" style="gap:4px"><small style="color:var(--muted)">ROUNDS</small><select class="control" id="mockRoundsPicker" aria-label="Number of mock draft rounds"><option>8</option><option>10</option><option>11</option><option>12</option><option selected>13</option><option>14</option><option>15</option></select></label><button class="btn primary" id="mockStartBtn">▶ Start mock draft</button><button class="btn" id="mockResetBtn">Reset</button></div></div>
+          <div class="panel">
+            <div class="panel-head"><div><div class="panel-title">On the clock</div><div class="panel-note" id="mockStatus">Choose your slot, league size, and rounds, then start the mock draft.</div></div><span class="tag green" id="mockProgress">0 / 156 picks</span></div>
+            <div class="progress-track"><div class="progress-fill" id="mockProgressBar" style="width:0%"></div></div>
+            <label class="mock-fast-forward" for="mockFastForward"><input type="checkbox" id="mockFastForward" aria-label="Speed through computer picks"> Speed through computer picks</label>
+          </div>
+          <div class="draft-layout section-gap">
+            <div class="panel">
+              <div class="panel-head"><div><div class="panel-title">Draft board</div><div class="panel-note">Snake order, like ESPN's mock draft lobby · your column is highlighted</div></div></div>
+              <div class="table-wrap"><table class="mock-board" id="mockBoard"></table></div>
+            </div>
+            <div>
+              <div class="panel">
+                <div class="panel-head"><div><div class="panel-title">Available players</div><div class="panel-note">Sorted by ADP · draft when you're on the clock</div></div></div>
+                <input class="control" id="mockSearch" placeholder="Search available players…" style="width:100%;margin-bottom:10px" aria-label="Search available players">
+                <div id="mockAvailable"></div>
+              </div>
+              <div class="panel section-gap"><div class="panel-head"><div><div class="panel-title">Your roster build</div><div class="panel-note">Category profile · from your mock draft picks</div></div></div><div id="mockRosterCategories"></div></div>
+              <div class="panel section-gap"><div class="panel-head"><div><div class="panel-title">Your picks</div><div class="panel-note">Every selection on your draft slot</div></div></div><div id="mockMyPicks"></div></div>
+            </div>
+          </div>
+          <div class="panel section-gap" id="mockSummary" hidden></div>
         </section>
 
         <section class="page" id="page-trade">
@@ -475,6 +520,11 @@
     let format = "categories", tradeFormat = "categories", activePage = "overview";
     let draftPosition = 4;
     const draft = [], receive = [], give = [];
+    let mockTeamCount = 12, mockSlot = 4, mockRounds = 13;
+    let mockPicks = [], mockDraftedKeys = new Set(), mockPool = [], mockCursor = 0;
+    let mockState = "setup";
+    let mockAutoHandle = null;
+    let mockSearchQuery = "";
     let includeInjuries = true;
     let selectedScheduleDate = localDateString();
     let scoreboardEvents = [], scheduleLoading = false, scheduleError = "", scheduleUpdatedAt = null, scheduleRequest = 0;
@@ -809,7 +859,10 @@
       }
     }
     async function fetchJson(url) {
-      const response=await fetch(url);
+      // ESPN's Core API sometimes returns $ref links with an http:// scheme. When this
+      // page is served over https, those requests are silently blocked as mixed content,
+      // which previously made every player's stats come back as N/A. Always upgrade to https.
+      const response=await fetch(url.replace(/^http:/,"https:"));
       if(response.status===404) return null;
       if(!response.ok) throw new Error(`ESPN returned HTTP ${response.status}.`);
       return response.json();
@@ -851,7 +904,10 @@
         const statRefs=new Map(pointsLeaders.map(entry=>{
           const athleteRef=entry.athlete?.$ref||"";
           const id=athleteRef.match(/athletes\/(\d+)/)?.[1];
-          return id?[id,entry.statistics?.$ref||`${base}/types/2/athletes/${id}/statistics/0?lang=en&region=us`]:null;
+          const statRef=entry.statistics?.$ref
+            ? entry.statistics.$ref.replace(/^http:/,"https:")
+            : `${base}/types/2/athletes/${id}/statistics/0?lang=en&region=us`;
+          return id?[id,statRef]:null;
         }).filter(Boolean));
         const refs=directory.items.map(item=>{
           const id=item.$ref?.match(/athletes\/(\d+)/)?.[1];
@@ -1118,7 +1174,7 @@
       activePage = page;
       $$(".page").forEach(section=>section.classList.toggle("active",section.id===`page-${page}`));
       $$(".nav button").forEach(button=>button.classList.toggle("active",button.dataset.page===page));
-      const labels = {overview:"Overview",schedule:"NBA schedule",players:"Player pool",roster:"My roster",advanced:"Advanced metrics",draft:"Draft room",trade:"Trade analyzer",settings:"League settings"};
+      const labels = {overview:"Overview",schedule:"NBA schedule",players:"Player pool",roster:"My roster",advanced:"Advanced metrics",draft:"Draft room",mockdraft:"Mock draft",trade:"Trade analyzer",settings:"League settings"};
       $("#breadcrumb").textContent = labels[page] || "Overview";
       if (page==="schedule") loadSchedule();
       if (page==="players") renderPlayers();
@@ -1126,6 +1182,7 @@
       if (page==="overview") renderOverviewRoster();
       if (page==="advanced") renderAdvanced();
       if (page==="draft") renderDraft();
+      if (page==="mockdraft") renderMockDraft();
       if (page==="trade") renderTrade();
       window.scrollTo({top:0,behavior:"smooth"});
     }
@@ -1160,6 +1217,180 @@
       const max = Math.max(1,...totals);
       $("#rosterCategories").innerHTML = categories.map((cat,i)=>`<div class="category-row"><div class="category-name">${categoryLabels[cat]}</div><div class="category-bar"><div class="category-fill" style="width:${totals[i]/max*100}%"></div></div><div class="category-value">${cat==="fg"||cat==="ft"?percent(totals[i]/Math.max(1,draft.length)):totals[i].toFixed(1)}</div></div>`).join("");
       $("#availablePlayers").innerHTML = rankedPlayers().filter(p=>!draft.includes(p)).slice(0,5).map(p=>`<div class="insight" style="align-items:center"><div class="player-avatar">${initials(p.name)}</div><div style="flex:1"><div class="insight-title">${p.name}</div><div class="insight-text">${p.pos} · ${p.team} · proj. ${Math.round(playerValue(p))}</div></div><button class="btn small" data-queue="${p.name}">＋</button></div>`).join("");
+    }
+    function mockFillerPlayer(index) {
+      const decay = Math.max(.2,1-index*.012);
+      return {name:`Waiver Wire FA ${index}`,team:"FA",pos:"UTIL",pts:+(7.5*decay).toFixed(1),reb:+(3*decay).toFixed(1),ast:+(1.5*decay).toFixed(1),stl:+(.5*decay).toFixed(1),blk:+(.3*decay).toFixed(1),three:+(.6*decay).toFixed(1),fg:+(.40+.04*decay).toFixed(3),ft:+(.66+.06*decay).toFixed(3),to:+(1.1*decay).toFixed(1),games:48,usg:14,ts:.52,minutes:16,adp:60+index,filler:true};
+    }
+    function buildMockPool(total) {
+      const base = [...players].sort((a,b)=>(a.adp??999)-(b.adp??999));
+      const pool = base.slice(0,total);
+      for (let i=pool.length;i<total;i++) pool.push(mockFillerPlayer(i-base.length+1));
+      return pool;
+    }
+    function mockPickSchedule(teamCount, rounds) {
+      const picks=[];
+      for (let round=0;round<rounds;round++) {
+        const order = round%2===0 ? Array.from({length:teamCount},(_,i)=>i+1) : Array.from({length:teamCount},(_,i)=>teamCount-i);
+        order.forEach((teamSlot,posInRound)=>{
+          picks.push({overall:round*teamCount+posInRound+1,round,teamSlot,player:null});
+        });
+      }
+      return picks;
+    }
+    function configuredMockTeamCount() {
+      return Number.parseInt($("#mockTeamCountPicker").value,10) || 12;
+    }
+    function configuredMockRounds() {
+      return Number.parseInt($("#mockRoundsPicker").value,10) || 13;
+    }
+    function syncMockSlotOptions() {
+      const teamCount=configuredMockTeamCount();
+      mockSlot=Math.max(1,Math.min(mockSlot,teamCount));
+      $("#mockSlotPicker").innerHTML=Array.from({length:teamCount},(_,index)=>`<option value="${index+1}">Slot ${index+1}</option>`).join("");
+      $("#mockSlotPicker").value=String(mockSlot);
+      $("#mockEyebrow").textContent=`MOCK DRAFT · SLOT ${mockSlot} OF ${teamCount}`;
+    }
+    function mockAvailablePlayers() {
+      return mockPool.filter(p=>!mockDraftedKeys.has(p.name));
+    }
+    function mockCpuSelect() {
+      // Pool is sorted by ADP ascending, so the first available player is strictly the next-best ADP.
+      return mockAvailablePlayers()[0];
+    }
+    function mockGradeLabel(rank,total) {
+      const pct = total>1 ? (total-rank)/(total-1) : 1;
+      if (pct>=.92) return "A+";
+      if (pct>=.82) return "A";
+      if (pct>=.72) return "A-";
+      if (pct>=.62) return "B+";
+      if (pct>=.52) return "B";
+      if (pct>=.42) return "B-";
+      if (pct>=.32) return "C+";
+      if (pct>=.22) return "C";
+      if (pct>=.12) return "C-";
+      if (pct>=.05) return "D";
+      return "F";
+    }
+    function startMockDraft() {
+      clearTimeout(mockAutoHandle);
+      mockTeamCount=configuredMockTeamCount();
+      mockRounds=configuredMockRounds();
+      mockSlot=Number.parseInt($("#mockSlotPicker").value,10)||1;
+      mockPicks=mockPickSchedule(mockTeamCount,mockRounds);
+      mockPool=buildMockPool(mockTeamCount*mockRounds);
+      mockDraftedKeys=new Set();
+      mockCursor=0;
+      mockState="running";
+      notify(`Mock draft started · you're drafting from slot ${mockSlot} of ${mockTeamCount}.`);
+      processMockDraft();
+    }
+    function resetMockDraft() {
+      clearTimeout(mockAutoHandle);
+      mockPicks=[]; mockPool=[]; mockDraftedKeys=new Set(); mockCursor=0; mockState="setup";
+      renderMockDraft();
+    }
+    function processMockDraft() {
+      if (mockCursor>=mockPicks.length) { mockState="complete"; clearTimeout(mockAutoHandle); renderMockDraft(); return; }
+      const pick=mockPicks[mockCursor];
+      if (pick.teamSlot===mockSlot) { mockState="user-turn"; renderMockDraft(); return; }
+      pick.player=mockCpuSelect();
+      mockDraftedKeys.add(pick.player.name);
+      mockCursor++;
+      renderMockDraft();
+      const delay=$("#mockFastForward").checked?30:450;
+      mockAutoHandle=setTimeout(processMockDraft,delay);
+    }
+    function mockDraftPick(name) {
+      if (mockState!=="user-turn" || mockCursor>=mockPicks.length) { notify("Wait until you're on the clock to draft a player."); return; }
+      const player=mockAvailablePlayers().find(p=>p.name===name);
+      if (!player) return;
+      const pick=mockPicks[mockCursor];
+      pick.player=player;
+      mockDraftedKeys.add(player.name);
+      mockCursor++;
+      notify(`You drafted ${player.name} with pick ${pick.overall} (round ${pick.round+1}).`);
+      mockState="running";
+      renderMockDraft();
+      mockAutoHandle=setTimeout(processMockDraft,250);
+    }
+    function renderMockBoard() {
+      const teamCount=mockTeamCount||configuredMockTeamCount();
+      const rounds=mockRounds||configuredMockRounds();
+      const byKey=new Map(mockPicks.map(pick=>[`${pick.round}-${pick.teamSlot}`,pick]));
+      const onClockKey = mockCursor<mockPicks.length ? `${mockPicks[mockCursor].round}-${mockPicks[mockCursor].teamSlot}` : "";
+      const head=`<thead><tr><th>Rd</th>${Array.from({length:teamCount},(_,i)=>i+1).map(teamSlot=>`<th class="${teamSlot===mockSlot?"user-col":""}">${teamSlot===mockSlot?"★ YOU":"Team "+teamSlot}</th>`).join("")}</tr></thead>`;
+      const body=Array.from({length:rounds},(_,round)=>{
+        const cells=Array.from({length:teamCount},(_,i)=>{
+          const teamSlot=i+1;
+          const pick=byKey.get(`${round}-${teamSlot}`);
+          const isOnClock=`${round}-${teamSlot}`===onClockKey;
+          const classes=["mock-cell",teamSlot===mockSlot?"user-col":"",pick&&pick.player?"":"empty",isOnClock?"onclock":""].filter(Boolean).join(" ");
+          const content = pick && pick.player
+            ? `<span class="mock-pick-num">#${pick.overall}</span><span class="mock-pick-name">${escapeHTML(pick.player.name)}</span>`
+            : pick ? `<span class="mock-pick-num">#${pick.overall}</span><span class="mock-pick-name">${isOnClock?"On the clock…":"—"}</span>` : "";
+          return `<td class="${classes}">${content}</td>`;
+        }).join("");
+        return `<tr><td class="mock-round-label">R${round+1}</td>${cells}</tr>`;
+      }).join("");
+      $("#mockBoard").innerHTML = mockPicks.length ? head+`<tbody>${body}</tbody>` : "";
+    }
+    function renderMockDraft() {
+      syncMockSlotOptions();
+      const teamCount=mockTeamCount||configuredMockTeamCount();
+      const totalPicks=mockPicks.length;
+      $("#mockProgress").textContent = totalPicks ? `${mockCursor} / ${totalPicks} picks` : "0 picks";
+      $("#mockProgressBar").style.width = totalPicks ? `${Math.min(100,mockCursor/totalPicks*100)}%` : "0%";
+      const startBtn=$("#mockStartBtn");
+      const setupInputs=["mockSlotPicker","mockTeamCountPicker","mockRoundsPicker"];
+      if (mockState==="setup") {
+        $("#mockStatus").textContent = "Choose your slot, league size, and rounds, then start the mock draft.";
+        startBtn.textContent = "▶ Start mock draft";
+        setupInputs.forEach(id=>$("#"+id).disabled=false);
+      } else if (mockState==="complete") {
+        $("#mockStatus").textContent = `Mock draft complete! You made ${mockPicks.filter(p=>p.teamSlot===mockSlot&&p.player).length} picks from slot ${mockSlot}.`;
+        startBtn.textContent = "↻ Start new mock draft";
+        setupInputs.forEach(id=>$("#"+id).disabled=false);
+      } else {
+        const current=mockPicks[mockCursor];
+        $("#mockStatus").textContent = mockState==="user-turn"
+          ? `You're on the clock! Round ${current.round+1}, pick ${current.overall} overall.`
+          : current ? `Simulating pick ${current.overall} of ${totalPicks} · Team ${current.teamSlot} is on the clock…` : "Simulating the draft…";
+        startBtn.textContent = "Drafting…";
+        setupInputs.forEach(id=>$("#"+id).disabled=true);
+      }
+      renderMockBoard();
+      const query=mockSearchQuery;
+      const available = mockPool.length ? mockAvailablePlayers().filter(p=>!query||p.name.toLowerCase().includes(query)).slice(0,30) : [];
+      $("#mockAvailable").innerHTML = available.length
+        ? available.map(p=>`<div class="mock-available-row"><div class="player-avatar">${initials(p.name)}</div><div style="flex:1"><div class="insight-title">${escapeHTML(p.name)}</div><div class="insight-text">${escapeHTML(p.pos)} · ${escapeHTML(p.team)} · proj. ${Math.round(playerValue(p))}</div></div><button class="btn small" data-mock-draft="${escapeHTML(p.name)}" ${mockState==="user-turn"?"":"disabled"}>Draft</button></div>`).join("")
+        : `<div class="empty">${mockPool.length?"No available players match your search.":"Start the mock draft to see available players."}</div>`;
+      const myPicks = mockPicks.filter(p=>p.teamSlot===mockSlot);
+      $("#mockMyPicks").innerHTML = myPicks.length
+        ? myPicks.map(pick=>`<div class="mock-pick-row"><div class="mock-pick-round">R${pick.round+1}</div><div style="flex:1"><div class="insight-title">${pick.player?escapeHTML(pick.player.name):`Pick #${pick.overall}`}</div><div class="insight-text">${pick.player?`${escapeHTML(pick.player.team)} · ${escapeHTML(pick.player.pos)} · ${pick.player.pts} PTS / ${pick.player.reb} REB / ${pick.player.ast} AST`:"Not yet on the clock"}</div></div></div>`).join("")
+        : `<div class="empty">Start the mock draft to build your roster.</div>`;
+      const myRoster = myPicks.filter(p=>p.player).map(p=>p.player);
+      const totals = categories.map(cat=>myRoster.reduce((sum,p)=>sum+p[cat],0));
+      const max = Math.max(1,...totals);
+      $("#mockRosterCategories").innerHTML = myRoster.length
+        ? categories.map((cat,i)=>`<div class="category-row"><div class="category-name">${categoryLabels[cat]}</div><div class="category-bar"><div class="category-fill" style="width:${totals[i]/max*100}%"></div></div><div class="category-value">${cat==="fg"||cat==="ft"?percent(totals[i]/Math.max(1,myRoster.length)):totals[i].toFixed(1)}</div></div>`).join("")
+        : `<div class="empty">Draft players to see your category profile.</div>`;
+      const summary=$("#mockSummary");
+      if (mockState==="complete" && totalPicks) {
+        const teamTotals = Array.from({length:teamCount},(_,i)=>{
+          const teamSlot=i+1;
+          const value = mockPicks.filter(p=>p.teamSlot===teamSlot&&p.player).reduce((sum,p)=>sum+playerValue(p.player),0);
+          return {teamSlot,value};
+        }).sort((a,b)=>b.value-a.value);
+        const rank = teamTotals.findIndex(t=>t.teamSlot===mockSlot)+1;
+        const grade = mockGradeLabel(rank,teamCount);
+        const myValue = teamTotals.find(t=>t.teamSlot===mockSlot)?.value || 0;
+        summary.hidden=false;
+        summary.innerHTML = `<div class="panel-head"><div><div class="panel-title">Mock draft grade</div><div class="panel-note">Projected value vs. the other ${teamCount-1} simulated teams</div></div></div><div class="mock-grade"><div class="mock-grade-badge">${grade}</div><div><div class="insight-title">Ranked #${rank} of ${teamCount} by projected value (${myValue.toFixed(0)} pts)</div><div class="insight-text">Based on ${categories.length}-category projected value across your ${myRoster.length} drafted players. Run it back from a different slot to compare outcomes.</div></div></div>`;
+      } else {
+        summary.hidden=true;
+        summary.innerHTML="";
+      }
     }
     function renderTrade() {
       ["receive","give"].forEach(side=>{
@@ -1223,11 +1454,18 @@
         saveRoster();
         renderRoster();
       }
+      const mockDraft=event.target.closest("[data-mock-draft]");
+      if(mockDraft) mockDraftPick(mockDraft.dataset.mockDraft);
     });
     $("#draftNext").addEventListener("click",()=>{
       const next=rankedPlayers().find(p=>!draft.includes(p));
       if(next) addToDraft(next.name);
     });
+    $("#mockStartBtn").addEventListener("click",startMockDraft);
+    $("#mockResetBtn").addEventListener("click",resetMockDraft);
+    $("#mockTeamCountPicker").addEventListener("change",syncMockSlotOptions);
+    $("#mockSlotPicker").addEventListener("change",event=>{ mockSlot=Number(event.target.value); syncMockSlotOptions(); });
+    $("#mockSearch").addEventListener("input",event=>{ mockSearchQuery=event.target.value.trim().toLowerCase(); renderMockDraft(); });
     $("#clearTrade").addEventListener("click",()=>{ receive.length=0; give.length=0; renderTrade(); });
     $("#injuryToggle").addEventListener("change",event=>{ includeInjuries=event.target.checked; renderPlayers(); renderTopPlayers(); renderDraft(); renderTrade(); });
     $("#saveSettings").addEventListener("click",()=>{
@@ -1299,7 +1537,7 @@
         loadSchedule();
       }
     },60000);
-    loadSavedRoster(); syncDraftPositionOptions(); populateSelectors(); renderTopPlayers(); renderPlayers(); renderDraft(); renderTrade(); renderSchedule(); renderAdvanced(); renderRoster(); loadSchedule(); loadHistoricalStats();
+    loadSavedRoster(); syncDraftPositionOptions(); syncMockSlotOptions(); populateSelectors(); renderTopPlayers(); renderPlayers(); renderDraft(); renderMockDraft(); renderTrade(); renderSchedule(); renderAdvanced(); renderRoster(); loadSchedule(); loadHistoricalStats();
   </script>
 </body>
 </html>
