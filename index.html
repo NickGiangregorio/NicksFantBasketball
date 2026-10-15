@@ -893,13 +893,25 @@
       try {
         const cache=forceRefresh?Object.create(null):readStatsCache();
         const base="https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2026";
-        const [directory,leaderboard,teamsResponse]=await Promise.all([
+        // The "site.api.espn.com" teams endpoint does not send CORS headers for most
+        // browser origins (it works when the file is opened locally but is blocked once
+        // the app is hosted, e.g. on GitHub Pages), so team names are resolved from the
+        // "sports.core.api.espn.com" host instead, which allows cross-origin requests.
+        // A lookup failure here is non-fatal; players simply fall back to a generic
+        // "NBA" team label rather than aborting the whole stats load.
+        const [directory,leaderboard,teamRefs]=await Promise.all([
           fetchJson(`${base}/athletes?limit=1000`),
           fetchJson(`${base}/types/2/leaders?lang=en&region=us&limit=1000`),
-          fetchJson("https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams?limit=50&season=2026")
+          fetchJson(`${base}/teams?limit=50`).catch(()=>null)
         ]);
         if(!directory||!Array.isArray(directory.items)||!directory.items.length) throw new Error("ESPN did not return the NBA season player directory.");
-        const teamMap=new Map((teamsResponse?.sports?.[0]?.leagues?.[0]?.teams||[]).map(entry=>[String(entry.team?.id),entry.team?.abbreviation||"NBA"]));
+        const teamEntries=await Promise.all((teamRefs?.items||[]).map(async item=>{
+          try {
+            const team=item?.$ref?await fetchJson(item.$ref):null;
+            return team?[String(team.id),team.abbreviation||"NBA"]:null;
+          } catch { return null; }
+        }));
+        const teamMap=new Map(teamEntries.filter(Boolean));
         const pointsLeaders=leaderboard?.categories?.find(category=>category.name==="pointsPerGame")?.leaders||[];
         const statRefs=new Map(pointsLeaders.map(entry=>{
           const athleteRef=entry.athlete?.$ref||"";
