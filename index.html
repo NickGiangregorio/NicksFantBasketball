@@ -346,7 +346,7 @@
             <div class="table-wrap"><table><thead><tr><th># / PLAYER</th><th>POS</th><th>TEAM</th><th>PTS<span class="metric-head">PROJ / 25–26 ACTUAL</span></th><th>REB<span class="metric-head">PROJ / 25–26 ACTUAL</span></th><th>AST<span class="metric-head">PROJ / 25–26 ACTUAL</span></th><th>STL<span class="metric-head">PROJ / 25–26 ACTUAL</span></th><th>BLK<span class="metric-head">PROJ / 25–26 ACTUAL</span></th><th>3PM<span class="metric-head">PROJ / 25–26 ACTUAL</span></th><th>FG%<span class="metric-head">PROJ / 25–26 ACTUAL</span></th><th>FT%<span class="metric-head">PROJ / 25–26 ACTUAL</span></th><th>TO<span class="metric-head">PROJ / 25–26 ACTUAL</span></th><th>GP<span class="metric-head">PROJ / 25–26 ACTUAL</span></th><th>USG%<span class="metric-head">PROJ / 25–26 ACTUAL</span></th><th>TS%<span class="metric-head">PROJ / 25–26 ACTUAL</span></th><th>PROJ</th><th></th></tr></thead><tbody id="playerRows"></tbody></table></div>
             <div class="stats-data-note" id="playerStatsStatus" aria-live="polite">Loading 2025–26 regular-season stats…</div>
             <div class="schedule-footer"><span id="playersPageInfo">Page 1</span><div class="schedule-tools"><button class="btn small" id="playersPrevious" aria-label="Previous players page">←</button><button class="btn small" id="playersNext" aria-label="Next players page">→</button></div></div>
-            <div class="table-caption">Each stat cell shows the projection first and the actual 2025–26 regular-season average beneath it. PTS, REB, AST, STL, BLK, 3PM, FG%, FT%, TO, USG%, and TS% are per game/rate stats; GP is a season total. The demo projections are estimates, not official ESPN projections. Players outside the curated demo list are ranked by actual 2025–26 production once loaded and show "—" for projections; they are not queueable in the Draft Room, which uses illustrative projections. Actual player stats are retrieved from the <a href="https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2026/types/2/athletes" target="_blank" rel="noopener noreferrer">ESPN Core API ↗</a>.</div>
+            <div class="table-caption">Each stat cell shows the projection first and the actual 2025–26 regular-season average beneath it. PTS, REB, AST, STL, BLK, 3PM, FG%, FT%, TO, USG%, and TS% are per game/rate stats; GP is a season total. The demo projections are estimates, not official ESPN projections; players outside the curated demo list instead show a formula-based projection from their 2024–25 per-game stats where available (rookies and others with no NBA history show "—"). Players outside the curated demo list are ranked by actual 2025–26 production once loaded and are not queueable in the Draft Room, which uses illustrative projections. Actual player stats are retrieved from the <a href="https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2026/types/2/athletes" target="_blank" rel="noopener noreferrer">ESPN Core API ↗</a>.</div>
           </div>
         </section>
 
@@ -516,6 +516,11 @@
       "Shaedon Sharpe":"4914336"
     };
     const historicalStats = Object.create(null);
+    // 2024–25 (prior season) per-game stats, used as a formula-based "projection" for the
+    // ~670 NBA players outside the curated demo list, which otherwise have no projection data.
+    const priorSeasonStats = Object.create(null);
+    let priorSeasonLoading = false;
+    let priorSeasonProgress = {done:0,total:0,loaded:0};
     let advancedPlayers = [...players];
     let historicalStatsLoading = false;
     let advancedProgress = {done:0,total:0,loaded:0,failed:0,error:""};
@@ -525,6 +530,7 @@
     let playersPage = 0;
     const playersPageSize = 50;
     const statsCacheKey = "courtside-nba-season-stats-2026-v2";
+    const priorSeasonCacheKey = "courtside-nba-prior-season-stats-2025-v1";
     const advancedPlayerById = new Map();
     const advancedPercentileValues = new Map();
     const rosterStorageKey = "courtside-fantasy-roster-v1";
@@ -730,11 +736,25 @@
       const stats = historicalStats[playerStatsKey(player)];
       return stats?.status === "loaded" && Number.isFinite(stats[key]) ? stats[key] : undefined;
     }
+    // Display-only projection used for non-curated players: their own demo projection if
+    // one exists, otherwise their 2024–25 (prior season) per-game average once loaded —
+    // a simple, formula-based stand-in projection. Players with no NBA history (e.g.
+    // rookies) show "—" here; this never affects ranking/sorting (see effectiveValue above).
+    function priorProjection(player, key) {
+      if (Number.isFinite(player[key])) return player[key];
+      const prior = priorSeasonStats[playerStatsKey(player)];
+      return prior?.status === "loaded" && Number.isFinite(prior[key]) ? prior[key] : undefined;
+    }
     const projectedGames = player => {
       const games = effectiveValue(player, "games");
       if (!Number.isFinite(games)) return undefined;
       return includeInjuries ? games : Math.min(82, Math.round(games * 1.04));
     };
+    function priorProjectedGames(player) {
+      const games = priorProjection(player, "games");
+      if (!Number.isFinite(games)) return undefined;
+      return includeInjuries ? games : Math.min(82, Math.round(games * 1.04));
+    }
     function pointsValue(player) {
       const pts=effectiveValue(player,"pts"), three=effectiveValue(player,"three"), reb=effectiveValue(player,"reb"),
         ast=effectiveValue(player,"ast"), stl=effectiveValue(player,"stl"), blk=effectiveValue(player,"blk"), to=effectiveValue(player,"to");
@@ -930,7 +950,12 @@
       const status=historicalStatsLoading
         ? `Loading 2025–26 stats from ESPN… ${loaded} of ${total} NBA players loaded so far.`
         : `${total} NBA players in the pool · 2025–26 regular-season stats loaded for ${loaded}${notAvailable?`; ${notAvailable} unavailable or no 2025–26 stats`:""}${failed?`; ${failed} ESPN request${failed===1?"":"s"} failed`:""}.`;
-      $("#playerStatsStatus").textContent=status;
+      const projectionNote=priorSeasonLoading
+        ? ` Building projections for players outside the curated list from 2024–25 per-game stats… ${priorSeasonProgress.done} of ${priorSeasonProgress.total} checked.`
+        : priorSeasonProgress.total
+          ? ` Projections for players outside the curated list use 2024–25 per-game stats where available (${priorSeasonProgress.loaded} of ${priorSeasonProgress.total}); rookies and others with no NBA history show “—”.`
+          : "";
+      $("#playerStatsStatus").textContent=status+projectionNote;
     }
     function normalizeSeasonStats(data) {
       const stats=Object.fromEntries((data.splits?.categories||[]).flatMap(category=>category.stats||[]).map(stat=>[stat.name,stat.value]));
@@ -1147,6 +1172,7 @@
         renderRoster();
         renderAdvancedProgress();
         renderAdvanced();
+        loadPriorSeasonProjections(forceRefresh);
       } catch(error) {
         historicalStatsLoading=false;
         advancedProgress.error=error instanceof Error?`Could not load the full NBA player directory: ${error.message}`:"Could not load the full NBA player directory.";
@@ -1156,6 +1182,71 @@
         renderRoster();
         renderAdvancedProgress();
         renderAdvanced();
+      }
+    }
+    function readPriorSeasonCache() {
+      try {
+        const saved=localStorage.getItem(priorSeasonCacheKey);
+        if(!saved) return Object.create(null);
+        const parsed=JSON.parse(saved);
+        return parsed&&parsed.season==="2024-25"&&parsed.players&&typeof parsed.players==="object"
+          ? parsed.players : Object.create(null);
+      } catch(error) {
+        return Object.create(null);
+      }
+    }
+    // Secondary, lower-priority fetch: once the current-season stats load finishes, pull
+    // each non-curated player's 2024–25 per-game stats from ESPN to use as a formula-based
+    // projection (see priorProjection). Runs in the background and never blocks the main
+    // player pool from rendering; failures simply leave those players' projections as "—".
+    async function loadPriorSeasonProjections(forceRefresh=false) {
+      if(priorSeasonLoading) return;
+      priorSeasonLoading=true;
+      priorSeasonProgress={done:0,total:0,loaded:0};
+      renderHistoricalStatus();
+      if(forceRefresh) {
+        try { localStorage.removeItem(priorSeasonCacheKey); } catch(error) { /* non-fatal */ }
+      }
+      try {
+        const cache=forceRefresh?Object.create(null):readPriorSeasonCache();
+        const base="https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2025";
+        const targets=advancedPlayers.filter(player=>player.espnId&&!Number.isFinite(player.pts));
+        priorSeasonProgress.total=targets.length;
+        let cursor=0, finished=0;
+        const worker=async()=>{
+          while(cursor<targets.length) {
+            const player=targets[cursor++];
+            const id=player.espnId;
+            const cached=cache[id];
+            if(cached) {
+              priorSeasonStats[id]=cached;
+              if(cached.status==="loaded") priorSeasonProgress.loaded++;
+              priorSeasonProgress.done++;
+              continue;
+            }
+            let stats={status:"missing"};
+            try {
+              const data=await fetchJson(`${base}/types/2/athletes/${id}/statistics/0?lang=en&region=us`);
+              if(data) stats=normalizeSeasonStats(data);
+            } catch(error) { stats={status:"missing"}; }
+            priorSeasonStats[id]=stats;
+            cache[id]=stats;
+            if(stats.status==="loaded") priorSeasonProgress.loaded++;
+            priorSeasonProgress.done++;
+            finished++;
+            if(finished%25===0) { renderPlayers(); renderHistoricalStatus(); }
+          }
+        };
+        await Promise.all(Array.from({length:16},worker));
+        try {
+          localStorage.setItem(priorSeasonCacheKey,JSON.stringify({season:"2024-25",savedAt:new Date().toISOString(),players:cache}));
+        } catch(error) { /* non-fatal: projections simply won't be cached between visits */ }
+      } catch(error) {
+        // non-fatal: players outside the curated list simply keep showing "—" for projection
+      } finally {
+        priorSeasonLoading=false;
+        renderPlayers();
+        renderHistoricalStatus();
       }
     }
     const offenseMetrics=[
@@ -1302,7 +1393,7 @@
       return `<div class="player-cell"><div class="player-avatar">${escapeHTML(initials(p.name))}</div><div><div class="player-name">${escapeHTML(p.name)}</div><div class="player-meta">ADP ${escapeHTML(p.adp??"—")} · ${minutes}</div></div></div>`;
     }
     function renderTopPlayers() {
-      $("#topPlayers").innerHTML = rankedPlayers().slice(0,5).map((p,i)=>`<tr><td>${playerCell(p,i+1)}</td><td class="rank">${i+1}</td><td>${statPair(p,"pts")}</td><td>${statPair(p,"reb")}</td><td>${statPair(p,"ast")}</td><td>${statPair(p,"stl")}</td><td>${statPair(p,"blk")}</td></tr>`).join("");
+      $("#topPlayers").innerHTML = rankedPlayers().slice(0,5).map((p,i)=>`<tr><td>${playerCell(p,i+1)}</td><td class="rank">${i+1}</td><td>${statPair(p,"pts",undefined,priorProjection(p,"pts"))}</td><td>${statPair(p,"reb",undefined,priorProjection(p,"reb"))}</td><td>${statPair(p,"ast",undefined,priorProjection(p,"ast"))}</td><td>${statPair(p,"stl",undefined,priorProjection(p,"stl"))}</td><td>${statPair(p,"blk",undefined,priorProjection(p,"blk"))}</td></tr>`).join("");
     }
     function renderPlayers() {
       const query = $("#playerSearch").value.trim().toLowerCase();
@@ -1328,7 +1419,7 @@
       const start = playersPage * playersPageSize;
       const page = filtered.slice(start, start + playersPageSize);
       const fmt=value=>Number.isFinite(value)?percent(value):"—";
-      $("#playerRows").innerHTML = page.map((p,i)=>{ const queueName=curatedQueueName(p); return `<tr><td>${playerCell(p,start+i+1)}</td><td>${p.pos}</td><td>${p.team}</td><td>${statPair(p,"pts")}</td><td>${statPair(p,"reb")}</td><td>${statPair(p,"ast")}</td><td>${statPair(p,"stl")}</td><td>${statPair(p,"blk")}</td><td>${statPair(p,"three")}</td><td>${statPair(p,"fg",fmt)}</td><td>${statPair(p,"ft",fmt)}</td><td>${statPair(p,"to")}</td><td>${statPair(p,"games",value=>String(value),projectedGames(p))}</td><td>${statPair(p,"usg",value=>`${Number(value).toFixed(1)}%`,p.usg)}</td><td>${statPair(p,"ts",fmt)}</td><td class="rank">${Number.isFinite(playerValue(p))?Math.round(playerValue(p)):"—"}</td><td>${queueName?`<button class="btn small" data-queue="${escapeHTML(queueName)}">＋ Queue</button>`:""}</td></tr>`; }).join("") || `<tr><td colspan="17" class="empty">No players match your filters.</td></tr>`;
+      $("#playerRows").innerHTML = page.map((p,i)=>{ const queueName=curatedQueueName(p); return `<tr><td>${playerCell(p,start+i+1)}</td><td>${p.pos}</td><td>${p.team}</td><td>${statPair(p,"pts",undefined,priorProjection(p,"pts"))}</td><td>${statPair(p,"reb",undefined,priorProjection(p,"reb"))}</td><td>${statPair(p,"ast",undefined,priorProjection(p,"ast"))}</td><td>${statPair(p,"stl",undefined,priorProjection(p,"stl"))}</td><td>${statPair(p,"blk",undefined,priorProjection(p,"blk"))}</td><td>${statPair(p,"three",undefined,priorProjection(p,"three"))}</td><td>${statPair(p,"fg",fmt,priorProjection(p,"fg"))}</td><td>${statPair(p,"ft",fmt,priorProjection(p,"ft"))}</td><td>${statPair(p,"to",undefined,priorProjection(p,"to"))}</td><td>${statPair(p,"games",value=>String(value),Number.isFinite(p.games)?projectedGames(p):priorProjectedGames(p))}</td><td>${statPair(p,"usg",value=>`${Number(value).toFixed(1)}%`,priorProjection(p,"usg"))}</td><td>${statPair(p,"ts",fmt,priorProjection(p,"ts"))}</td><td class="rank">${Number.isFinite(playerValue(p))?Math.round(playerValue(p)):"—"}</td><td>${queueName?`<button class="btn small" data-queue="${escapeHTML(queueName)}">＋ Queue</button>`:""}</td></tr>`; }).join("") || `<tr><td colspan="17" class="empty">No players match your filters.</td></tr>`;
       $("#playersPageInfo").textContent = `Page ${playersPage+1} of ${pageCount} · ${total} players`;
       $("#playersPrevious").disabled = playersPage===0;
       $("#playersNext").disabled = playersPage>=pageCount-1;
