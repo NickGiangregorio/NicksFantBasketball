@@ -218,6 +218,18 @@
     .schedule-preview .schedule-game { padding: 10px; }
     @media (max-width: 850px) { .schedule-preview .schedule-games { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     @media (max-width: 520px) { .schedule-games, .schedule-preview .schedule-games { grid-template-columns: 1fr; } .schedule-tools input[type="date"] { width: 125px; } }
+    .schedule-game.expanded { grid-column: 1 / -1; }
+    .box-score-toggle { width: 100%; margin-top: 10px; }
+    .box-score-panel { margin-top: 12px; padding-top: 12px; border-top: 1px solid #2a303c; display: flex; flex-direction: column; gap: 14px; }
+    .box-score-compare table { font-size: 9px; }
+    .box-score-compare th:first-child, .box-score-compare td:first-child,
+    .box-score-compare th:last-child, .box-score-compare td:last-child { text-align: center; width: 70px; }
+    .box-score-compare th:nth-child(2), .box-score-compare td:nth-child(2) { text-align: center; color: var(--muted); }
+    .box-score-team-head { display: flex; align-items: center; gap: 6px; margin-bottom: 7px; color: #e3e4e8; font-size: 10px; font-weight: 700; }
+    .box-score-team table td:first-child, .box-score-team th:first-child { text-align: left; }
+    .box-score-starter { margin-left: 4px; color: #ff8d6b; font-size: 8px; }
+    .box-score-dnp { margin-top: 6px; color: var(--muted); font-size: 9px; }
+    .box-score-retry { margin-top: 8px; }
     .toast { position: fixed; right: 22px; bottom: 22px; z-index: 10; padding: 12px 16px; border: 1px solid #435233; border-radius: 8px; background: #20291d; color: #e4f3c9; font-size: 11px; opacity: 0; pointer-events: none; transform: translateY(8px); transition: .2s; }
     .toast.show { opacity: 1; transform: translateY(0); }
     .mock-board { width: 100%; border-collapse: collapse; font-size: 10px; }
@@ -529,6 +541,8 @@
     let selectedScheduleDate = localDateString();
     let scoreboardEvents = [], scheduleLoading = false, scheduleError = "", scheduleUpdatedAt = null, scheduleRequest = 0;
     let leagueSeason = "";
+    let boxScores = Object.create(null);
+    let expandedBoxScores = new Set();
     const $ = selector => document.querySelector(selector);
     const $$ = selector => [...document.querySelectorAll(selector)];
     const initials = name => name.split(" ").slice(0,2).map(part => part[0]).join("").replace(/[.'’]/g,"").slice(0,2).toUpperCase();
@@ -563,7 +577,91 @@
         const record = team.records?.[0]?.summary;
         return `<div class="game-team">${logo}<span class="team-name">${escapeHTML(info.displayName || info.name || abbreviation)}</span>${record?`<span class="team-record">${escapeHTML(record)}</span>`:""}${hasStarted&&team.score!==undefined?`<span class="team-score">${escapeHTML(team.score)}</span>`:""}</div>`;
       }).join("");
-      return `<article class="schedule-game"><div class="game-topline"><span class="tag">${escapeHTML(event.shortName || "NBA")}</span><span class="game-status ${statusClass}">${escapeHTML(status)}</span></div><div class="game-teams">${teamRows}</div></article>`;
+      const eventId = event.id;
+      const expanded = Boolean(eventId) && expandedBoxScores.has(eventId);
+      const boxScoreButton = !eventId ? "" : hasStarted
+        ? `<button class="btn small box-score-toggle" data-box-score="${escapeHTML(eventId)}">${expanded?"Hide box score ▲":"Box score ▼"}</button>`
+        : `<button class="btn small box-score-toggle" disabled title="Box score available once the game tips off">Box score ▼</button>`;
+      const boxScorePanel = expanded ? renderBoxScorePanel(eventId) : "";
+      return `<article class="schedule-game${expanded?" expanded":""}"><div class="game-topline"><span class="tag">${escapeHTML(event.shortName || "NBA")}</span><span class="game-status ${statusClass}">${escapeHTML(status)}</span></div><div class="game-teams">${teamRows}</div>${boxScoreButton}${boxScorePanel}</article>`;
+    }
+    function renderBoxScoreTeamCompare(teams) {
+      if (!Array.isArray(teams) || teams.length < 2) return "";
+      const statMap = team => Object.fromEntries((team.statistics||[]).map(stat=>[stat.name,stat]));
+      const [teamA,teamB] = teams;
+      const statsA = statMap(teamA), statsB = statMap(teamB);
+      const rows = [
+        ["fieldGoalsMade-fieldGoalsAttempted","FG"],
+        ["threePointFieldGoalsMade-threePointFieldGoalsAttempted","3PT"],
+        ["freeThrowsMade-freeThrowsAttempted","FT"],
+        ["totalRebounds","REB"],
+        ["assists","AST"],
+        ["steals","STL"],
+        ["blocks","BLK"],
+        ["turnovers","TO"]
+      ].map(([key,label])=>`<tr><td>${escapeHTML(statsA[key]?.displayValue ?? "—")}</td><th>${label}</th><td>${escapeHTML(statsB[key]?.displayValue ?? "—")}</td></tr>`).join("");
+      return `<div class="box-score-compare"><div class="table-wrap"><table><thead><tr><th>${escapeHTML(teamA.team?.abbreviation || "Away")}</th><th></th><th>${escapeHTML(teamB.team?.abbreviation || "Home")}</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+    }
+    function renderBoxScorePlayerTable(teamEntry) {
+      const teamAbbr = teamEntry.team?.abbreviation || "NBA";
+      const group = teamEntry.statistics?.[0];
+      const labels = group?.labels || [];
+      const athletes = group?.athletes || [];
+      const colIndex = key => labels.indexOf(key);
+      const played = athletes.filter(a=>!a.didNotPlay && Array.isArray(a.stats) && a.stats.length);
+      const dnp = athletes.filter(a=>a.didNotPlay).map(a=>a.athlete?.displayName).filter(Boolean);
+      const ptsIndex = colIndex("PTS");
+      const sorted = ptsIndex===-1 ? played : [...played].sort((a,b)=>(Number(b.stats[ptsIndex])||0)-(Number(a.stats[ptsIndex])||0));
+      const cols = ["MIN","PTS","REB","AST","STL","BLK","TO","FG","3PT","FT"].filter(key=>colIndex(key)!==-1);
+      const rows = sorted.map(a=>{
+        const cells = cols.map(key=>`<td>${escapeHTML(a.stats[colIndex(key)] ?? "—")}</td>`).join("");
+        return `<tr><td>${escapeHTML(a.athlete?.shortName || a.athlete?.displayName || "Player")}${a.starter?`<span class="box-score-starter" title="Starter">●</span>`:""}</td>${cells}</tr>`;
+      }).join("");
+      return `<div class="box-score-team"><div class="box-score-team-head">${escapeHTML(teamAbbr)}</div><div class="table-wrap"><table><thead><tr><th>Player</th>${cols.map(key=>`<th>${key}</th>`).join("")}</tr></thead><tbody>${rows || `<tr><td colspan="${cols.length+1}" class="empty">No player stats yet.</td></tr>`}</tbody></table></div>${dnp.length?`<div class="box-score-dnp">Did not play: ${escapeHTML(dnp.join(", "))}</div>`:""}</div>`;
+    }
+    function renderBoxScorePanel(eventId) {
+      const entry = boxScores[eventId];
+      if (!entry || entry.status === "loading") {
+        return `<div class="box-score-panel"><div class="schedule-status">Loading box score…</div></div>`;
+      }
+      if (entry.status === "error") {
+        return `<div class="box-score-panel"><div class="schedule-status error">${escapeHTML(entry.error)}</div><button class="btn small box-score-retry" data-retry-box-score="${escapeHTML(eventId)}">Retry</button></div>`;
+      }
+      const teams = entry.data?.teams || [];
+      const players = entry.data?.players || [];
+      if (!teams.length && !players.length) {
+        return `<div class="box-score-panel"><div class="schedule-status">Box score is not available yet for this game.</div></div>`;
+      }
+      return `<div class="box-score-panel">${renderBoxScoreTeamCompare(teams)}${players.map(renderBoxScorePlayerTable).join("")}</div>`;
+    }
+    async function loadBoxScore(eventId) {
+      boxScores[eventId] = {status:"loading"};
+      renderSchedule();
+      try {
+        const data = await fetchJson(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=${eventId}`);
+        if (!data || !data.boxscore) throw new Error("ESPN did not return a box score for this game.");
+        boxScores[eventId] = {status:"loaded", data:data.boxscore, fetchedAt:new Date()};
+      } catch (error) {
+        boxScores[eventId] = {status:"error", error: error instanceof Error ? error.message : "Could not load the box score."};
+      }
+      renderSchedule();
+    }
+    function toggleBoxScore(eventId) {
+      if (expandedBoxScores.has(eventId)) {
+        expandedBoxScores.delete(eventId);
+        renderSchedule();
+        return;
+      }
+      expandedBoxScores.add(eventId);
+      const cached = boxScores[eventId];
+      if (!cached || cached.status === "error") loadBoxScore(eventId);
+      else renderSchedule();
+    }
+    function refreshExpandedBoxScores() {
+      for (const eventId of expandedBoxScores) {
+        const event = scoreboardEvents.find(item=>item.id===eventId);
+        if (event?.competitions?.[0]?.status?.type?.state === "in") loadBoxScore(eventId);
+      }
     }
     function renderSchedule() {
       const today = selectedScheduleDate === localDateString();
@@ -1468,6 +1566,10 @@
       }
       const mockDraft=event.target.closest("[data-mock-draft]");
       if(mockDraft) mockDraftPick(mockDraft.dataset.mockDraft);
+      const boxScoreToggle=event.target.closest("[data-box-score]");
+      if(boxScoreToggle) toggleBoxScore(boxScoreToggle.dataset.boxScore);
+      const boxScoreRetry=event.target.closest("[data-retry-box-score]");
+      if(boxScoreRetry) loadBoxScore(boxScoreRetry.dataset.retryBoxScore);
     });
     $("#draftNext").addEventListener("click",()=>{
       const next=rankedPlayers().find(p=>!draft.includes(p));
@@ -1546,7 +1648,7 @@
         scoreboardEvents=[]; scheduleUpdatedAt=null;
         loadSchedule();
       } else if(selectedScheduleDate===currentDate && !scheduleLoading) {
-        loadSchedule();
+        loadSchedule().then(refreshExpandedBoxScores);
       }
     },60000);
     loadSavedRoster(); syncDraftPositionOptions(); syncMockSlotOptions(); populateSelectors(); renderTopPlayers(); renderPlayers(); renderDraft(); renderMockDraft(); renderTrade(); renderSchedule(); renderAdvanced(); renderRoster(); loadSchedule(); loadHistoricalStats();
